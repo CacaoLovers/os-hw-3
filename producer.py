@@ -1,21 +1,19 @@
-#!/bin/python3
-
+#!/usr/bin/python3
 import random
 import time
+import sys
+import os
 
-def generate_expression():
-    x = random.randint(1, 9)
-    o = random.choice(['+', '-', '*', '/'])
-    y = random.randint(1, 9)
-    return f"{x} {o} {y}"
+N = random.randint(120, 180)
 
-def main():
-    N = random.randint(1, 18)
+for _ in range(N):
+    X = random.randint(1, 9)
+    O = random.choice(['+', '-', '*', '/'])
+    Y = random.randint(1, 9)
 
-    for _ in range(N):
-        expression = generate_expression()
-        print(expression)
-        time.sleep(1)
+    print(f"{X} {O} {Y}")
+    sys.stdout.flush()
 
-if __name__ == "__main__":
-    main()
+    time.sleep(1)
+
+os._exit(0)

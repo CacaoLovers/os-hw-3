@@ -1,54 +1,60 @@
-#!/bin/python3
+#!/usr/bin/python3
 import os
-import sys
 import signal
+import sys
 
-def handler(signum, frame):
-    if signum == signal.SIGUSR1:
-        print(f"Produced: {produced}")
-        sys.exit(0)
+def sigusr1_handler(signum, frame):
+    global produced_count
+    output = "Produced: " + str(produced_count) + "\n"
+    sys.stderr.write(output)
 
-def main():
-    global produced
-    produced = 0
+signal.signal(signal.SIGUSR1, sigusr1_handler)
 
-    signal.signal(signal.SIGUSR1, handler)
+pipe1to0 = os.pipe()
+pipe0to2 = os.pipe()
+pipe2to0 = os.pipe()
 
-    pipe1_read, pipe1_write = os.pipe()
-    pipe0_read, pipe0_write = os.pipe()
-    pipe2_read, pipe2_write = os.pipe()
+P1 = os.fork()
 
-    pid1 = os.fork()
+if P1 == 0:
+    os.close(pipe0to2[0])
+    os.close(pipe0to2[1])
+    os.close(pipe2to0[0])
+    os.close(pipe2to0[1])
+    os.close(pipe1to0[0])
+    os.dup2(pipe1to0[1], sys.stdout.fileno())
+    os.execve('./producer.py', ['./producer.py'], os.environ)
+    os._exit(0)
 
-    if pid1 == 0:
-        os.close(pipe1_read)
-        os.dup2(pipe1_write, sys.stdout.fileno())
-        os.execve("producer.py", ["pyp"], os.environ)
+P2 = os.fork()
 
-    pid2 = os.fork()
+if P2 == 0:
+    os.close(pipe1to0[0])
+    os.close(pipe1to0[1])
+    os.close(pipe0to2[1])
+    os.close(pipe2to0[0])
+    os.dup2(pipe0to2[0], sys.stdin.fileno())
+    os.dup2(pipe2to0[1], sys.stdout.fileno())
+    os.execve('/usr/bin/bc', ['/usr/bin/bc'], os.environ)
+    os._exit(0)
 
-    if pid2 == 0:  # P2
-        os.close(pipe0_read)
-        os.dup2(pipe0_write, sys.stdin.fileno())
-        os.close(pipe2_write)
-        os.dup2(pipe2_read, sys.stdout.fileno())
-        os.execve("/usr/bin/bc", ["bc"], os.environ)
+os.close(pipe1to0[1])
+os.close(pipe0to2[0])
+os.close(pipe2to0[1])
 
-    os.close(pipe1_write)
+produced_count = 0
 
-    while True:
-        expression = os.read(pipe1_read, 100).decode("utf-8").strip()
-        if not expression:
-            break
+while True:
+    ariphmetic_expression = os.read(pipe1to0[0], 1024).decode("utf-8")
+    if not ariphmetic_expression:
+        os.kill(os.getpid(), signal.SIGUSR1)
+        break
+    os.write(pipe0to2[1], ariphmetic_expression.encode("utf-8"))
+    bc_result = os.read(pipe2to0[0], 1024).decode("utf-8")
+    print(f"{ariphmetic_expression.strip()} = {bc_result.strip()}")
+    produced_count += 1
 
-        os.write(pipe0_write, (expression + "\n").encode("utf-8"))
-        result = os.read(pipe2_read, 100).decode("utf-8").strip()
-        print(f"{expression} = {result}")
+os.kill(P1, signal.SIGTERM)
+os.kill(P2, signal.SIGTERM)
 
-        produced += 1
-
-
-    os.kill(os.getpid(), signal.SIGUSR1)
-
-if __name__ == "__main__":
-    main()
+os._exit(0)
